@@ -32,7 +32,6 @@ function syncVendorSheets() {
     if (action === 'created') result.created += 1;
     if (action === 'updated') result.updated += 1;
     if (action === 'skipped') result.skipped += 1;
-    if (action === 'cleared') result.cleared += 1;
   });
 
   oaHandleUnusedVendorSheets_(targetSS, groups, source.exportColumnCount, result);
@@ -50,7 +49,7 @@ function oaReadSourceData_(sourceSheet) {
   const lastColumn = sourceSheet.getLastColumn();
 
   if (lastRow < CONFIG.DATA_START_ROW) {
-    throw new Error('No source data found in ' + CONFIG.SOURCE_SHEET_NAME);
+    return oaEmptySource_(sourceSheet, lastColumn);
   }
 
   const allHeaders = sourceSheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastColumn).getValues()[0];
@@ -82,6 +81,27 @@ function oaReadSourceData_(sourceSheet) {
     exportStartColumn: locationIndex + 1,
     exportHeaders: exportHeaders,
     exportRows: exportRows,
+    exportColumnCount: exportHeaders.length
+  };
+}
+
+function oaEmptySource_(sourceSheet, lastColumn) {
+  const allHeaders = sourceSheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastColumn).getValues()[0];
+  const headerMap = oaBuildHeaderMap_(allHeaders);
+  const locationIndex = oaFindHeaderIndex_(headerMap, 'Location', CONFIG.LOCATION_COLUMN - 1);
+  const vendorIndex = oaFindHeaderIndex_(headerMap, 'Vendor', CONFIG.VENDOR_COLUMN - 1);
+  const onboardedIndex = oaFindHeaderIndex_(headerMap, 'Onboarded', lastColumn - 1);
+  const exportHeaders = allHeaders.slice(locationIndex, onboardedIndex + 1);
+
+  return {
+    allHeaders: allHeaders,
+    rawRows: [],
+    headerMap: headerMap,
+    locationIndex: locationIndex,
+    vendorIndex: vendorIndex,
+    exportStartColumn: locationIndex + 1,
+    exportHeaders: exportHeaders,
+    exportRows: [],
     exportColumnCount: exportHeaders.length
   };
 }
@@ -118,15 +138,19 @@ function oaSyncOneVendor_(targetSS, sourceSheet, vendorName, source, group) {
     sheet = targetSS.insertSheet(vendorName);
   }
 
+  const requiredRows = Math.max(CONFIG.DATA_START_ROW + group.rows.length, CONFIG.DATA_START_ROW + 1);
+  oaEnsureSheetSize_(sheet, requiredRows, source.exportColumnCount);
+
+  const needsSetup = oaVendorSheetNeedsSetup_(sheet, source);
   const newHash = oaHashRows_(group.rows);
   const propertyKey = oaVendorHashKey_(vendorName);
   const oldHash = oaGetScriptProperty_(propertyKey);
 
-  if (CONFIG.SMART_SYNC && oldHash === newHash && !isNewSheet) {
+  if (CONFIG.SMART_SYNC && oldHash === newHash && !isNewSheet && !needsSetup) {
     return 'skipped';
   }
 
-  oaPrepareVendorSheet_(sheet, sourceSheet, source, isNewSheet);
+  oaPrepareVendorSheet_(sheet, sourceSheet, source, needsSetup || isNewSheet);
   oaClearDataOnly_(sheet, CONFIG.DATA_START_ROW, 1, source.exportColumnCount);
 
   if (group.rows.length > 0) {
@@ -140,12 +164,17 @@ function oaSyncOneVendor_(targetSS, sourceSheet, vendorName, source, group) {
   return isNewSheet ? 'created' : 'updated';
 }
 
-function oaPrepareVendorSheet_(sheet, sourceSheet, source, isNewSheet) {
-  const currentHeader = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, source.exportColumnCount).getValues()[0];
-  const needsHeader = isNewSheet || currentHeader.join('') === '';
+function oaVendorSheetNeedsSetup_(sheet, source) {
+  const headerValues = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, source.exportColumnCount).getValues()[0];
+  const current = headerValues.map(oaNormalizeText_).join('|');
+  const expected = source.exportHeaders.map(oaNormalizeText_).join('|');
+  return current !== expected;
+}
 
-  if (needsHeader) {
-    sheet.getRange(CONFIG.HEADER_ROW, 1, 1, source.exportColumnCount).setValues([source.exportHeaders]);
+function oaPrepareVendorSheet_(sheet, sourceSheet, source, shouldApplyFormat) {
+  sheet.getRange(CONFIG.HEADER_ROW, 1, 1, source.exportColumnCount).setValues([source.exportHeaders]);
+
+  if (shouldApplyFormat) {
     oaCopyHeaderFormat_(sourceSheet, sheet, source.exportStartColumn, 1, source.exportColumnCount);
     oaCopyColumnWidths_(sourceSheet, sheet, source.exportStartColumn, 1, source.exportColumnCount);
     sheet.setFrozenRows(CONFIG.HEADER_ROW);
