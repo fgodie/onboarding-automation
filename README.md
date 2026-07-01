@@ -2,14 +2,19 @@
 
 Google Apps Script automation for synchronizing **Batch 2 Sites** into vendor-specific sheets inside **Onboarding Issue List**.
 
-## Current scope
+## Status
+
+`v1.0 stable` review completed.
+
+## Features
 
 - Read data from `Batch 2 Sites`
 - Group rows by Vendor
 - Automatically create vendor sheets
-- Sync all source columns into each vendor sheet
-- Preserve sheet formatting as much as possible
-- Copy dropdown/data validation from source columns
+- Sync source columns from `Location` to `Onboarded`
+- Smart Sync using hash comparison
+- Preserve header formatting and column widths on first setup
+- Copy dropdown/data validation from the source sheet
 - Provide a simple Dashboard
 - Optional backup module
 - LockService to prevent two sync runs at the same time
@@ -54,6 +59,7 @@ The source data starts from column B:
 
 ```text
 Config.gs
+Utils.gs
 Main.gs
 SyncVendor.gs
 Dashboard.gs
@@ -61,6 +67,18 @@ Backup.gs
 INSTALL.md
 ```
 
-## Status
+## First run
 
-Project setup started. Core Apps Script files will be added next.
+Copy all `.gs` files into Apps Script, then run:
+
+```javascript
+syncNow
+```
+
+After the first successful test, run:
+
+```javascript
+createSyncTrigger
+```
+
+This creates the 5-minute automatic sync trigger.
