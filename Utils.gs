@@ -88,9 +88,21 @@ function oaCopyColumnWidths_(sourceSheet, targetSheet, sourceStartCol, targetSta
 
 function oaCopyHeaderFormat_(sourceSheet, targetSheet, sourceStartCol, targetStartCol, columnCount) {
   oaEnsureSheetSize_(targetSheet, CONFIG.HEADER_ROW, targetStartCol + columnCount - 1);
-  sourceSheet
-    .getRange(CONFIG.HEADER_ROW, sourceStartCol, 1, columnCount)
-    .copyTo(targetSheet.getRange(CONFIG.HEADER_ROW, targetStartCol, 1, columnCount), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+
+  const sourceRange = sourceSheet.getRange(CONFIG.HEADER_ROW, sourceStartCol, 1, columnCount);
+  const targetRange = targetSheet.getRange(CONFIG.HEADER_ROW, targetStartCol, 1, columnCount);
+
+  // copyTo(PASTE_FORMAT) cannot be used across two different spreadsheets.
+  // So the most important header formats are copied manually.
+  targetRange.setBackgrounds(sourceRange.getBackgrounds());
+  targetRange.setFontColors(sourceRange.getFontColors());
+  targetRange.setFontWeights(sourceRange.getFontWeights());
+  targetRange.setFontStyles(sourceRange.getFontStyles());
+  targetRange.setFontSizes(sourceRange.getFontSizes());
+  targetRange.setHorizontalAlignments(sourceRange.getHorizontalAlignments());
+  targetRange.setVerticalAlignments(sourceRange.getVerticalAlignments());
+  targetRange.setWraps(sourceRange.getWraps());
+  targetRange.setNumberFormats(sourceRange.getNumberFormats());
 }
 
 function oaCopyDataValidations_(sourceSheet, targetSheet, sourceStartCol, targetStartCol, rowCount, columnCount) {
