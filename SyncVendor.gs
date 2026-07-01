@@ -138,6 +138,8 @@ function oaSyncOneVendor_(targetSS, sourceSheet, vendorName, source, group) {
     sheet = targetSS.insertSheet(vendorName);
   }
 
+  oaRegisterManagedVendor_(vendorName);
+
   const requiredRows = Math.max(CONFIG.DATA_START_ROW + group.rows.length, CONFIG.DATA_START_ROW + 1);
   oaEnsureSheetSize_(sheet, requiredRows, source.exportColumnCount);
 
@@ -183,14 +185,23 @@ function oaPrepareVendorSheet_(sheet, sourceSheet, source, shouldApplyFormat) {
 
 function oaHandleUnusedVendorSheets_(targetSS, currentGroups, columnCount, result) {
   const currentNames = Object.keys(currentGroups);
+  const managedNames = oaGetManagedVendors_();
 
-  targetSS.getSheets().forEach(function(sheet) {
-    const name = sheet.getName();
-    if (oaIsSystemSheet_(name)) return;
+  managedNames.forEach(function(name) {
     if (currentNames.indexOf(name) !== -1) return;
+
+    const sheet = targetSS.getSheetByName(name);
+    if (!sheet) {
+      oaRemoveManagedVendor_(name);
+      oaDeleteScriptProperty_(oaVendorHashKey_(name));
+      return;
+    }
+
+    if (oaIsSystemSheet_(name)) return;
 
     if (CONFIG.DELETE_UNUSED_VENDOR_SHEETS) {
       targetSS.deleteSheet(sheet);
+      oaRemoveManagedVendor_(name);
       oaDeleteScriptProperty_(oaVendorHashKey_(name));
       result.deleted += 1;
     } else {
@@ -219,4 +230,43 @@ function oaCreateSyncResult_(startedAt) {
 
 function oaVendorHashKey_(vendorName) {
   return 'VENDOR_HASH_' + oaMd5_(vendorName);
+}
+
+function oaManagedVendorsKey_() {
+  return 'MANAGED_VENDOR_SHEETS';
+}
+
+function oaGetManagedVendors_() {
+  const raw = oaGetScriptProperty_(oaManagedVendorsKey_());
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function oaSetManagedVendors_(vendors) {
+  const unique = [];
+  vendors.forEach(function(vendor) {
+    if (unique.indexOf(vendor) === -1) unique.push(vendor);
+  });
+  oaSetScriptProperty_(oaManagedVendorsKey_(), JSON.stringify(unique.sort()));
+}
+
+function oaRegisterManagedVendor_(vendorName) {
+  const vendors = oaGetManagedVendors_();
+  if (vendors.indexOf(vendorName) === -1) {
+    vendors.push(vendorName);
+    oaSetManagedVendors_(vendors);
+  }
+}
+
+function oaRemoveManagedVendor_(vendorName) {
+  const vendors = oaGetManagedVendors_().filter(function(item) {
+    return item !== vendorName;
+  });
+  oaSetManagedVendors_(vendors);
 }
