@@ -70,13 +70,24 @@ function oaHashRows_(rows) {
   return oaMd5_(JSON.stringify(rows));
 }
 
+function oaEnsureSheetSize_(sheet, minRows, minColumns) {
+  if (sheet.getMaxRows() < minRows) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), minRows - sheet.getMaxRows());
+  }
+  if (sheet.getMaxColumns() < minColumns) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), minColumns - sheet.getMaxColumns());
+  }
+}
+
 function oaCopyColumnWidths_(sourceSheet, targetSheet, sourceStartCol, targetStartCol, columnCount) {
+  oaEnsureSheetSize_(targetSheet, targetSheet.getMaxRows(), targetStartCol + columnCount - 1);
   for (let i = 0; i < columnCount; i++) {
     targetSheet.setColumnWidth(targetStartCol + i, sourceSheet.getColumnWidth(sourceStartCol + i));
   }
 }
 
 function oaCopyHeaderFormat_(sourceSheet, targetSheet, sourceStartCol, targetStartCol, columnCount) {
+  oaEnsureSheetSize_(targetSheet, CONFIG.HEADER_ROW, targetStartCol + columnCount - 1);
   sourceSheet
     .getRange(CONFIG.HEADER_ROW, sourceStartCol, 1, columnCount)
     .copyTo(targetSheet.getRange(CONFIG.HEADER_ROW, targetStartCol, 1, columnCount), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
@@ -84,6 +95,7 @@ function oaCopyHeaderFormat_(sourceSheet, targetSheet, sourceStartCol, targetSta
 
 function oaCopyDataValidations_(sourceSheet, targetSheet, sourceStartCol, targetStartCol, rowCount, columnCount) {
   if (rowCount < 1) return;
+  oaEnsureSheetSize_(targetSheet, CONFIG.DATA_START_ROW + rowCount - 1, targetStartCol + columnCount - 1);
   const sourceRange = sourceSheet.getRange(CONFIG.DATA_START_ROW, sourceStartCol, 1, columnCount);
   const rules = sourceRange.getDataValidations()[0];
   for (let colOffset = 0; colOffset < columnCount; colOffset++) {
