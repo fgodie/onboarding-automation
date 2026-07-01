@@ -12,6 +12,7 @@ const CONFIG = {
   HEADER_ROW: 2,
   DATA_START_ROW: 3,
 
+  // Fallback column positions, 1-based. The script will prefer header names when possible.
   LOCATION_COLUMN: 2, // B
   VENDOR_COLUMN: 4,   // D
 
@@ -33,12 +34,16 @@ const CONFIG = {
 
   DASHBOARD_SHEET_NAME: 'Dashboard',
 
-  SYSTEM_SHEETS: ['Dashboard'],
+  // Sheets listed here will never be treated as vendor sheets.
+  // Sheet1 is included to protect the default blank tab in a new spreadsheet.
+  SYSTEM_SHEETS: ['Dashboard', 'Sheet1'],
 
+  // If false, vendor sheets with no current data are cleared but not deleted.
   DELETE_UNUSED_VENDOR_SHEETS: false,
 
   SMART_SYNC: true,
 
+  // Backup settings. Fill BACKUP_FOLDER_ID when you want automatic backup.
   BACKUP_FOLDER_ID: '',
   BACKUP_KEEP_DAYS: 30,
   BACKUP_FILE_PREFIX: 'Onboarding Issue List Backup',
