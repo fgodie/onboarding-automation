@@ -144,23 +144,27 @@ function oaSyncOneVendor_(targetSS, sourceSheet, vendorName, source, group) {
   oaEnsureSheetSize_(sheet, requiredRows, source.exportColumnCount);
 
   const needsSetup = oaVendorSheetNeedsSetup_(sheet, source);
-  const newHash = oaHashRows_(group.rows);
+  const preservedEditableValues = oaReadExistingEditableValues_(sheet, source);
+  const finalRows = oaMergePreservedEditableValues_(group.rows, preservedEditableValues, source);
+  const newHash = oaHashRows_(finalRows);
   const propertyKey = oaVendorHashKey_(vendorName);
   const oldHash = oaGetScriptProperty_(propertyKey);
 
   if (CONFIG.SMART_SYNC && oldHash === newHash && !isNewSheet && !needsSetup) {
+    oaApplyVendorProtection_(sheet, source);
     return 'skipped';
   }
 
   oaPrepareVendorSheet_(sheet, sourceSheet, source, needsSetup || isNewSheet);
   oaClearDataOnly_(sheet, CONFIG.DATA_START_ROW, 1, source.exportColumnCount);
 
-  if (group.rows.length > 0) {
-    sheet.getRange(CONFIG.DATA_START_ROW, 1, group.rows.length, source.exportColumnCount).setValues(group.rows);
-    oaCopyDataValidations_(sourceSheet, sheet, source.exportStartColumn, 1, group.rows.length, source.exportColumnCount);
+  if (finalRows.length > 0) {
+    sheet.getRange(CONFIG.DATA_START_ROW, 1, finalRows.length, source.exportColumnCount).setValues(finalRows);
+    oaCopyDataValidations_(sourceSheet, sheet, source.exportStartColumn, 1, finalRows.length, source.exportColumnCount);
   }
 
-  oaEnsureFilter_(sheet, CONFIG.HEADER_ROW, 1, Math.max(group.rows.length + 1, 2), source.exportColumnCount);
+  oaEnsureFilter_(sheet, CONFIG.HEADER_ROW, 1, Math.max(finalRows.length + 1, 2), source.exportColumnCount);
+  oaApplyVendorProtection_(sheet, source);
   oaSetScriptProperty_(propertyKey, newHash);
 
   return isNewSheet ? 'created' : 'updated';
@@ -181,6 +185,116 @@ function oaPrepareVendorSheet_(sheet, sourceSheet, source, shouldApplyFormat) {
     oaCopyColumnWidths_(sourceSheet, sheet, source.exportStartColumn, 1, source.exportColumnCount);
     sheet.setFrozenRows(CONFIG.HEADER_ROW);
   }
+}
+
+function oaReadExistingEditableValues_(sheet, source) {
+  const valuesByKey = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return valuesByKey;
+
+  const rowCount = lastRow - CONFIG.DATA_START_ROW + 1;
+  const existingRows = sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, source.exportColumnCount).getValues();
+  const editableIndexes = oaGetHeaderIndexes_(source.exportHeaders, CONFIG.EDITABLE_VENDOR_HEADERS || []);
+
+  existingRows.forEach(function(row) {
+    const key = oaBuildVendorRowKey_(row, source.exportHeaders);
+    if (!key) return;
+
+    valuesByKey[key] = {};
+    editableIndexes.forEach(function(index) {
+      valuesByKey[key][index] = row[index];
+    });
+  });
+
+  return valuesByKey;
+}
+
+function oaMergePreservedEditableValues_(sourceRows, preservedEditableValues, source) {
+  const editableIndexes = oaGetHeaderIndexes_(source.exportHeaders, CONFIG.EDITABLE_VENDOR_HEADERS || []);
+
+  return sourceRows.map(function(row) {
+    const newRow = row.slice();
+    const key = oaBuildVendorRowKey_(newRow, source.exportHeaders);
+
+    if (key && Object.prototype.hasOwnProperty.call(preservedEditableValues, key)) {
+      editableIndexes.forEach(function(index) {
+        if (Object.prototype.hasOwnProperty.call(preservedEditableValues[key], index)) {
+          newRow[index] = preservedEditableValues[key][index];
+        }
+      });
+    }
+
+    return newRow;
+  });
+}
+
+function oaBuildVendorRowKey_(row, headers) {
+  const headerMap = oaBuildHeaderMap_(headers);
+  const locationIndex = oaFindHeaderIndex_(headerMap, 'Location', 0);
+  const postalIndex = oaFindHeaderIndex_(headerMap, 'Postal Code', 1);
+
+  const location = oaNormalizeText_(row[locationIndex]);
+  const postal = oaNormalizeText_(row[postalIndex]);
+
+  if (!location && !postal) return '';
+  return location + '||' + postal;
+}
+
+function oaGetHeaderIndexes_(headers, headerNames) {
+  const headerMap = oaBuildHeaderMap_(headers);
+  const indexes = [];
+
+  headerNames.forEach(function(headerName) {
+    const index = oaFindHeaderIndex_(headerMap, headerName, -1);
+    if (index >= 0 && indexes.indexOf(index) === -1) {
+      indexes.push(index);
+    }
+  });
+
+  return indexes;
+}
+
+function oaApplyVendorProtection_(sheet, source) {
+  const protectedIndexes = oaGetHeaderIndexes_(source.exportHeaders, CONFIG.PROTECTED_VENDOR_HEADERS || []);
+  if (protectedIndexes.length === 0) return;
+
+  oaRemoveManagedProtections_(sheet);
+
+  const maxRows = Math.max(sheet.getMaxRows(), CONFIG.DATA_START_ROW + 50);
+  protectedIndexes.forEach(function(index) {
+    const header = source.exportHeaders[index];
+    const range = sheet.getRange(CONFIG.HEADER_ROW, index + 1, maxRows - CONFIG.HEADER_ROW + 1, 1);
+    const protection = range.protect().setDescription(oaProtectionDescription_(header));
+    protection.setWarningOnly(false);
+
+    try {
+      const me = Session.getEffectiveUser();
+      protection.addEditor(me);
+      const editorsToRemove = protection.getEditors().filter(function(editor) {
+        return editor.getEmail() !== me.getEmail();
+      });
+      if (editorsToRemove.length > 0) {
+        protection.removeEditors(editorsToRemove);
+      }
+      if (protection.canDomainEdit()) {
+        protection.setDomainEdit(false);
+      }
+    } catch (error) {
+      Logger.log('Protection editor setup skipped for ' + sheet.getName() + ': ' + error);
+    }
+  });
+}
+
+function oaRemoveManagedProtections_(sheet) {
+  sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function(protection) {
+    if (String(protection.getDescription()).indexOf('OA_PROTECTED_VENDOR_COLUMN:') === 0) {
+      protection.remove();
+    }
+  });
+}
+
+function oaProtectionDescription_(header) {
+  return 'OA_PROTECTED_VENDOR_COLUMN: ' + header;
 }
 
 function oaHandleUnusedVendorSheets_(targetSS, currentGroups, columnCount, result) {
