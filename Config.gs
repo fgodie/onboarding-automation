@@ -32,6 +32,28 @@ const CONFIG = {
     'Onboarded'
   ],
 
+  // These columns are editable in vendor sheets.
+  // Existing values are preserved on later sync runs.
+  EDITABLE_VENDOR_HEADERS: [
+    'Fibre cable',
+    'Singtel ONT',
+    'Singtel Box',
+    'Remarks'
+  ],
+
+  // These columns are protected in vendor sheets.
+  PROTECTED_VENDOR_HEADERS: [
+    'Location',
+    'Postal Code',
+    'Vendor',
+    'DIV',
+    'Rack Loc',
+    'Cert Loaded?',
+    'SDWan Loaded?',
+    'Have cert?',
+    'Onboarded'
+  ],
+
   DASHBOARD_SHEET_NAME: 'Dashboard',
 
   // Sheets listed here will never be treated as vendor sheets.
