@@ -19,7 +19,7 @@ function onOpen() {
 function syncNow() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
-    SpreadsheetApp.getUi().alert('Sync is already running. Please try again later.');
+    oaNotify_('Sync is already running. Please try again later.');
     return;
   }
 
@@ -27,7 +27,8 @@ function syncNow() {
   try {
     const result = syncVendorSheets();
     updateDashboard(result);
-    SpreadsheetApp.getUi().alert(
+
+    oaNotify_(
       'Sync Completed\n\n' +
       'Vendors: ' + result.vendorCount + '\n' +
       'Records: ' + result.totalRecords + '\n' +
@@ -54,27 +55,27 @@ function syncNowSilent() {
 function backupNow() {
   const file = backupOnboardingIssueList();
   if (file) {
-    SpreadsheetApp.getUi().alert('Backup Completed\n\n' + file.getName());
+    oaNotify_('Backup Completed\n\n' + file.getName());
   }
 }
 
 function createSyncTrigger() {
   deleteTriggerByFunction_('syncNowSilent');
   ScriptApp.newTrigger('syncNowSilent').timeBased().everyMinutes(5).create();
-  SpreadsheetApp.getUi().alert('5-minute sync trigger created.');
+  oaNotify_('5-minute sync trigger created.');
 }
 
 function createBackupTrigger() {
   deleteTriggerByFunction_('backupOnboardingIssueList');
   ScriptApp.newTrigger('backupOnboardingIssueList').timeBased().everyDays(1).atHour(2).create();
-  SpreadsheetApp.getUi().alert('Daily backup trigger created for around 2 AM.');
+  oaNotify_('Daily backup trigger created for around 2 AM.');
 }
 
 function deleteProjectTriggers() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     ScriptApp.deleteTrigger(trigger);
   });
-  SpreadsheetApp.getUi().alert('All project triggers deleted.');
+  oaNotify_('All project triggers deleted.');
 }
 
 function deleteTriggerByFunction_(functionName) {
@@ -83,4 +84,13 @@ function deleteTriggerByFunction_(functionName) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
+}
+
+function oaNotify_(message) {
+  Logger.log(message);
+  try {
+    SpreadsheetApp.getUi().alert(message);
+  } catch (error) {
+    // getUi() is unavailable when running from the Apps Script editor or time-based triggers.
+  }
 }
