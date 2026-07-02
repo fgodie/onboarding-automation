@@ -148,13 +148,9 @@ function oaSyncOneVendor_(targetSS, sourceSheet, vendorName, source, group) {
   const finalRows = oaMergePreservedEditableValues_(group.rows, preservedEditableValues, source);
   const newHash = oaHashRows_(finalRows);
   const propertyKey = oaVendorHashKey_(vendorName);
-  const oldHash = oaGetScriptProperty_(propertyKey);
 
-  if (CONFIG.SMART_SYNC && oldHash === newHash && !isNewSheet && !needsSetup) {
-    oaApplyVendorProtection_(sheet, source);
-    return 'skipped';
-  }
-
+  // Do not skip the sheet here. Fixed/source-controlled columns must be written every sync,
+  // so manual edits in protected columns are corrected back to Batch 2 Sites values.
   oaPrepareVendorSheet_(sheet, sourceSheet, source, needsSetup || isNewSheet);
   oaClearDataOnly_(sheet, CONFIG.DATA_START_ROW, 1, source.exportColumnCount);
 
