@@ -167,8 +167,13 @@ function oaSyncOneVendor_(targetSS, sourceSheet, vendorName, source, group) {
     }
   }
 
-  oaEnsureFilter_(sheet, CONFIG.HEADER_ROW, 1, Math.max(finalRows.length + 1, 2), source.exportColumnCount);
-  oaApplyVendorProtection_(sheet, source);
+  // Filter and protection are only created during initial setup.
+  // Existing vendor sheet filter/protection/formatting is not touched on later sync runs.
+  if (shouldInitializeValidation) {
+    oaEnsureFilter_(sheet, CONFIG.HEADER_ROW, 1, Math.max(finalRows.length + 1, 2), source.exportColumnCount);
+    oaApplyVendorProtection_(sheet, source);
+  }
+
   oaSetScriptProperty_(propertyKey, newHash);
 
   return isNewSheet ? 'created' : 'updated';
