@@ -41,6 +41,14 @@ const CONFIG = {
     'Remarks'
   ],
 
+  // Vendor values in these columns can backfill Batch 2 Sites only when Batch 2 Sites is blank.
+  BACKFILL_TO_SOURCE_HEADERS: [
+    'Fibre cable',
+    'Singtel ONT',
+    'Singtel Box',
+    'Remarks'
+  ],
+
   // These columns are protected in vendor sheets.
   PROTECTED_VENDOR_HEADERS: [
     'Location',
@@ -55,10 +63,11 @@ const CONFIG = {
   ],
 
   DASHBOARD_SHEET_NAME: 'Dashboard',
+  SYNC_LOG_SHEET_NAME: 'Sync Log',
 
   // Sheets listed here will never be treated as vendor sheets.
   // Sheet1 is included to protect the default blank tab in a new spreadsheet.
-  SYSTEM_SHEETS: ['Dashboard', 'Sheet1'],
+  SYSTEM_SHEETS: ['Dashboard', 'Sync Log', 'Sheet1'],
 
   // If false, vendor sheets with no current data are cleared but not deleted.
   DELETE_UNUSED_VENDOR_SHEETS: false,
