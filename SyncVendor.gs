@@ -34,6 +34,10 @@ function syncVendorSheets() {
     if (action === 'skipped') result.skipped += 1;
   });
 
+  const backfillResult = oaBackfillSourceFromVendorSheets_(targetSS, sourceSheet, source);
+  result.backfilledRows = backfillResult.backfilledRows;
+  result.backfilledCells = backfillResult.backfilledCells;
+
   oaHandleUnusedVendorSheets_(targetSS, groups, source.exportColumnCount, result);
 
   result.finishedAt = new Date();
@@ -228,6 +232,108 @@ function oaMergePreservedEditableValues_(sourceRows, preservedEditableValues, so
   });
 }
 
+function oaBackfillSourceFromVendorSheets_(targetSS, sourceSheet, source) {
+  const result = { backfilledRows: 0, backfilledCells: 0 };
+  const headers = source.exportHeaders;
+  const backfillIndexes = oaGetHeaderIndexes_(headers, CONFIG.BACKFILL_TO_SOURCE_HEADERS || []);
+  if (backfillIndexes.length === 0) return result;
+
+  const sourceRowMap = oaBuildSourceRowMap_(sourceSheet, source);
+  const logRows = [];
+  const managedVendors = oaGetManagedVendors_();
+
+  managedVendors.forEach(function(vendorName) {
+    const sheet = targetSS.getSheetByName(vendorName);
+    if (!sheet || oaIsSystemSheet_(vendorName)) return;
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) return;
+
+    const rowCount = lastRow - CONFIG.DATA_START_ROW + 1;
+    const vendorRows = sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, source.exportColumnCount).getValues();
+
+    vendorRows.forEach(function(row) {
+      const postal = oaGetPostalFromExportRow_(row, headers);
+      if (!postal || !sourceRowMap[postal]) return;
+
+      const sourceInfo = sourceRowMap[postal];
+      const updatedColumns = [];
+      const newValues = [];
+
+      backfillIndexes.forEach(function(exportIndex) {
+        const vendorValue = row[exportIndex];
+        if (oaNormalizeText_(vendorValue) === '') return;
+
+        const sourceCol = source.exportStartColumn + exportIndex;
+        const sourceValue = sourceSheet.getRange(sourceInfo.rowNumber, sourceCol).getValue();
+        if (oaNormalizeText_(sourceValue) !== '') return;
+
+        sourceSheet.getRange(sourceInfo.rowNumber, sourceCol).setValue(vendorValue);
+        updatedColumns.push(headers[exportIndex]);
+        newValues.push(headers[exportIndex] + '=' + vendorValue);
+        result.backfilledCells += 1;
+      });
+
+      if (updatedColumns.length > 0) {
+        result.backfilledRows += 1;
+        logRows.push([
+          oaFormatDate_(new Date()),
+          vendorName,
+          postal,
+          updatedColumns.join(', '),
+          newValues.join(' | '),
+          'Backfill'
+        ]);
+      }
+    });
+  });
+
+  if (logRows.length > 0) {
+    oaAppendSyncLog_(targetSS, logRows);
+  }
+
+  return result;
+}
+
+function oaBuildSourceRowMap_(sourceSheet, source) {
+  const map = {};
+  const headerMap = oaBuildHeaderMap_(source.exportHeaders);
+  const postalExportIndex = oaFindHeaderIndex_(headerMap, 'Postal Code', 1);
+
+  source.rawRows.forEach(function(row, offset) {
+    const exportRow = row.slice(source.locationIndex, source.locationIndex + source.exportColumnCount);
+    const postal = oaNormalizeText_(exportRow[postalExportIndex]);
+    if (!postal) return;
+
+    map[postal] = {
+      rowNumber: CONFIG.DATA_START_ROW + offset
+    };
+  });
+
+  return map;
+}
+
+function oaGetPostalFromExportRow_(row, headers) {
+  const headerMap = oaBuildHeaderMap_(headers);
+  const postalIndex = oaFindHeaderIndex_(headerMap, 'Postal Code', 1);
+  return oaNormalizeText_(row[postalIndex]);
+}
+
+function oaAppendSyncLog_(targetSS, logRows) {
+  const sheetName = CONFIG.SYNC_LOG_SHEET_NAME || 'Sync Log';
+  let sheet = targetSS.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = targetSS.insertSheet(sheetName);
+    sheet.getRange(1, 1, 1, 6).setValues([['Time', 'Vendor', 'Postal Code', 'Updated Columns', 'New Values', 'Action']]);
+    sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, logRows.length, 6).setValues(logRows);
+  sheet.autoResizeColumns(1, 6);
+}
+
 function oaBuildVendorRowKey_(row, headers) {
   const headerMap = oaBuildHeaderMap_(headers);
   const locationIndex = oaFindHeaderIndex_(headerMap, 'Location', 0);
@@ -338,6 +444,8 @@ function oaCreateSyncResult_(startedAt) {
     skipped: 0,
     cleared: 0,
     deleted: 0,
+    backfilledRows: 0,
+    backfilledCells: 0,
     vendorRows: []
   };
 }
